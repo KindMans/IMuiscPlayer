@@ -157,6 +157,9 @@ public:
 
         verticalLayout_3->addLayout(verticalLayout);
 
+        verticalLayout_3->setStretch(0, 1);
+        verticalLayout_3->setStretch(1, 3);
+        verticalLayout_3->setStretch(2, 1);
 
         gridLayout->addLayout(verticalLayout_3, 0, 0, 1, 1);
 

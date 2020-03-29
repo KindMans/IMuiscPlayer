@@ -17,13 +17,11 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     src/fileSystem/filesystem.cpp \
-    src/treeListView/treelistview.cpp \
     src/main.cpp \
     src/imusicplayer.cpp
 
 HEADERS += \
     src/fileSystem/filesystem.h \
-    src/treeListView/treelistview.h \
     src/imusicplayer.h
 
 FORMS += \
