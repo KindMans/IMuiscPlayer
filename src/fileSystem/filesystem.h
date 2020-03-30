@@ -11,8 +11,10 @@ public:
 
     QList<QString> getFileList(const QString &path);
     QString getFilePath();
+    bool fileExist(const QString &path);
+    void removeFile();
     bool openFile(const QString &path);
-    int Write(const QString &data);
+    int  Write(const QString &data);
     void Read(QString &buf,int len);
     void ReadAll(QString &buf);
     bool IsOpen();

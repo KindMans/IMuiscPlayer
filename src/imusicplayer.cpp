@@ -3,6 +3,7 @@
 #include "fileSystem/filesystem.h"
 #include <QListWidget>
 #include <QFileDialog>
+#include <QMessageBox>
 
 IMusicPlayer::IMusicPlayer(QWidget *parent)
     : QWidget(parent)
@@ -10,22 +11,42 @@ IMusicPlayer::IMusicPlayer(QWidget *parent)
 {
     ui->setupUi(this);
 
-    connect(ui->listWidget,SIGNAL(currentRowChanged(int)),this,SLOT(on_currentRow_change(int)));
-    connect(&m_player,SIGNAL(stateChanged(QMediaPlayer::State)),this,SLOT(on_seqPlayMusic()));
-    connect(&m_player,SIGNAL(positionChanged(qint64)),this,SLOT(on_fast_forward(qint64)));
-    connect(&m_player,SIGNAL(durationChanged(qint64)),this,SLOT(on_duration(qint64)));
-    connect(ui->position_change,SIGNAL(valueChanged(int)),this,SLOT(on_speed_progress(int)));
+    hlayout1 = new QHBoxLayout;
+    hlayout2 = new QHBoxLayout;
+    listwidget = new QListWidget(this);
+    hlayout1->addWidget(listwidget);
+    ui->tab_now->setLayout(hlayout1);
+    ui->tab_history->setLayout(hlayout2);
+    ui->tabWidget->setCurrentIndex(0);
+
+    connect(&m_player,SIGNAL(stateChanged(QMediaPlayer::State)),this,SLOT(slot_playModelSelect()));
+    connect(&m_player,SIGNAL(positionChanged(qint64)),this,SLOT(slot_modifyProgress(qint64)));
+    connect(&m_player,SIGNAL(durationChanged(qint64)),this,SLOT(slot_duration(qint64)));
+
+    connect(ui->slider_position,SIGNAL(valueChanged(int)),this,SLOT(slot_setPosition(int)));
+    connect(ui->slider_position,SIGNAL(sliderMoved(int)),this,SLOT(slot_position_change_sliderMoved(int)));
+    connect(ui->slider_volume,SIGNAL(sliderMoved(int)),this,SLOT(slot_volume_change_sliderMoved(int)));
+
+    connect(ui->btn_player,SIGNAL(clicked()),this,SLOT(slot_btn_player_clicked()));
+    connect(ui->btn_pause,SIGNAL(clicked()),this,SLOT(slot_btn_pause_clicked()));
+    connect(ui->btn_load,SIGNAL(clicked()),this,SLOT(slot_btn_load_clicked()));
+    connect(ui->btn_prev,SIGNAL(clicked()),this,SLOT(slot_btn_prev_clicked()));
+    connect(ui->btn_next,SIGNAL(clicked()),this,SLOT(slot_btn_next_clicked()));
+
+    connect(listwidget,SIGNAL(currentRowChanged(int)),this,SLOT(slot_currentRow_change(int)));
+    connect(listwidget,SIGNAL(itemDoubleClicked(QListWidgetItem *)),this,
+            SLOT(slot_listWidget_doubleClicked(QListWidgetItem *)));
+    connect(ui->tabWidget,SIGNAL(currentChanged(int)),this,SLOT(slot_tabWidget_currentChanged(int)));
 
     ui->combox_play_model->setCurrentIndex(0);  //默认顺序播放
-    ui->volume_change->setMaximum(100);
-    ui->volume_change->setValue(50);
+    ui->slider_volume->setMaximum(100);
+    ui->slider_volume->setValue(50);
 
     m_prevOrnext=false;
     m_bIsmove = false;
     m_hisPath = "";
-    getHistotyConfig();
 
-    hlayout = new QHBoxLayout(this);
+    getHistotyConfig();
 }
 
 IMusicPlayer::~IMusicPlayer()
@@ -41,9 +62,9 @@ void IMusicPlayer::getMusicList()
     for(int i=0;i<fileNameList.size();i++){
         QListWidgetItem *listwidgetItem = new QListWidgetItem;
         listwidgetItem->setText(fileNameList.at(i));
-        ui->listWidget->insertItem(i+1,listwidgetItem);
+        listwidget->insertItem(i+1,listwidgetItem);
     }
-    ui->listWidget->setCurrentRow(0);
+    listwidget->setCurrentRow(0);
 }
 
 void IMusicPlayer::setPlayMusicUrl(const QString &url)
@@ -53,7 +74,18 @@ void IMusicPlayer::setPlayMusicUrl(const QString &url)
 
 void IMusicPlayer::playMusic(int row)
 {
-    setPlayMusicUrl(m_filePath + ui->listWidget->item(row)->text());
+    setPlayMusicUrl(m_filePath + listwidget->item(row)->text());
+
+    m_player.play();
+
+    //写入历史文件
+    recordHistoryMusic(m_hisPath);
+}
+
+//重载
+void IMusicPlayer::playMusic(const QString &text)
+{
+    setPlayMusicUrl(m_filePath + text);
 
     m_player.play();
 
@@ -64,15 +96,16 @@ void IMusicPlayer::playMusic(int row)
 void IMusicPlayer::recordHistoryMusic(const QString &path)
 {
     FileSystem fileSystem;
+
     if(!fileSystem.openFile(path))
         return;
 
     QString array;
     fileSystem.ReadAll(array);
 
-    if(!array.contains(ui->listWidget->currentItem()->text()))
+    if(!array.contains(listwidget->currentItem()->text()))
     {
-        fileSystem.Write(ui->listWidget->currentItem()->text()+",");
+        fileSystem.Write(listwidget->currentItem()->text()+",");
     }
 
 
@@ -92,7 +125,14 @@ void IMusicPlayer::readHistoryMusic(const QString &path,QString &data)
 
 void IMusicPlayer::showHistoryList()
 {
-    ui->listWidget->clear();
+    if(m_filePath == "")
+    {
+        QMessageBox::information(this,"提示","暂无历史播放","确定");
+        return;
+    }
+
+
+    listwidget->clear();
     QString array;
     readHistoryMusic(m_hisPath,array);
     QString music(array);
@@ -101,9 +141,33 @@ void IMusicPlayer::showHistoryList()
     {
         QListWidgetItem *listwidgetItem = new QListWidgetItem;
         listwidgetItem->setText(musicList.at(i));
-        ui->listWidget->insertItem(i+1,listwidgetItem);
+        listwidget->insertItem(i+1,listwidgetItem);
     }
-    ui->listWidget->setCurrentRow(0);
+    listwidget->setCurrentRow(0);
+}
+
+void IMusicPlayer::showList()
+{
+    static int cnt=0;
+
+    if(m_musicList.size()==0)
+        return;
+    for(int i=0;i<m_musicList.size();i++){
+        QListWidgetItem *listwidgetItem = new QListWidgetItem;
+        QString fileName=m_musicList.at(i).section("/",-1);
+        if(cnt==0){
+            listwidgetItem->setText(fileName);
+            listwidget->insertItem(i+1,listwidgetItem);
+        }else{
+            QStringList historyNames=getAllListWidgetText();
+            if(!historyNames.contains(fileName)){
+                listwidgetItem->setText(fileName);
+                listwidget->insertItem(historyNames.size()+1,listwidgetItem);
+            }
+        }
+    }
+    listwidget->setCurrentRow(0);
+    cnt++;
 }
 
 void IMusicPlayer::getHistotyConfig()
@@ -134,8 +198,8 @@ int IMusicPlayer::numRandom()
 {
     int ret;
     qsrand(time(NULL));
-    ret=qrand()%ui->listWidget->count();
-    if(ret==ui->listWidget->currentRow())
+    ret=qrand()%listwidget->count();
+    if(ret==listwidget->currentRow())
     {
         numRandom();
     }
@@ -145,28 +209,24 @@ int IMusicPlayer::numRandom()
 QStringList IMusicPlayer::getAllListWidgetText()
 {
     QStringList allItemText;
-    for(int i=0;i<ui->listWidget->count();i++){
-        QString itemText=ui->listWidget->item(i)->text();
+    for(int i=0;i<listwidget->count();i++){
+        QString itemText=listwidget->item(i)->text();
         allItemText.push_back(itemText);
     }
     return allItemText;
 }
 
-void IMusicPlayer::on_fast_forward(qint64 position)
+void IMusicPlayer::slot_modifyProgress(qint64 position)
 {
-    if(qAbs(m_player.position()-position)>99)
-    {
-        m_player.setPosition(position);
-    }
-    ui->position_change->setValue(position);
+    ui->slider_position->setValue(position);
 }
 
-void IMusicPlayer::on_duration(qint64 duration)
+void IMusicPlayer::slot_duration(qint64 duration)
 {
-    ui->position_change->setRange(0,duration);
+    ui->slider_position->setRange(0,duration);
 }
 
-void IMusicPlayer::on_speed_progress(int value)
+void IMusicPlayer::slot_setPosition(int value)
 {
     if(m_bIsmove)
     {
@@ -176,24 +236,30 @@ void IMusicPlayer::on_speed_progress(int value)
 
 }
 
-void IMusicPlayer::on_currentRow_change(int row)
+void IMusicPlayer::slot_position_change_sliderMoved(int position)
 {
-    ui->listWidget->setCurrentRow(row);
+    Q_UNUSED(position);
+    m_bIsmove=true;
 }
 
-void IMusicPlayer::on_btn_player_clicked()
+void IMusicPlayer::slot_volume_change_sliderMoved(int position)
+{
+    m_player.setVolume(position);
+}
+
+void IMusicPlayer::slot_btn_player_clicked()
 {
     m_prevOrnext = true;
-    int row=ui->listWidget->currentRow();
+    int row=listwidget->currentRow();
     playMusic(row);
 }
 
-void IMusicPlayer::on_btn_pause_clicked()
+void IMusicPlayer::slot_btn_pause_clicked()
 {
     stopMusic();
 }
 
-void IMusicPlayer::on_seqPlayMusic()
+void IMusicPlayer::slot_playModelSelect()
 {
 
     if(m_player.state()==QMediaPlayer::State::StoppedState)
@@ -209,8 +275,8 @@ void IMusicPlayer::on_seqPlayMusic()
         qDebug()<<"当前行："<<ui->combox_play_model->currentText();
         if(ui->combox_play_model->currentIndex()==0)
         {
-            int count = ui->listWidget->currentRow();
-            if(count == ui->listWidget->count()-1)
+            int count = listwidget->currentRow();
+            if(count == listwidget->count()-1)
             {
                 nextRow = 0;
             }else{
@@ -223,132 +289,107 @@ void IMusicPlayer::on_seqPlayMusic()
         }
         else if(ui->combox_play_model->currentIndex()==2)
         {
-//            m_playerList.clear();
-//            int currentRow=ui->listWidget->currentRow();
-//            m_playerList.addMedia(QUrl::fromLocalFile(m_filePath+ui->listWidget->item(currentRow)->text()));
-//            m_playerList.setCurrentIndex(1);
-//            m_playerList.setPlaybackMode(QMediaPlaylist::CurrentItemInLoop);
-//            m_player.setPlaylist(&m_playerList);
-//            m_player.play();
-            nextRow=ui->listWidget->currentRow();
+            nextRow=listwidget->currentRow();
         }
 
-        ui->listWidget->setCurrentRow(nextRow);
+        listwidget->setCurrentRow(nextRow);
         playMusic(nextRow);
     }
 }
 
-void IMusicPlayer::on_btn_load_clicked()
+void IMusicPlayer::slot_btn_load_clicked()
 {
-    static int cnt=0;
     FileSystem fileSystem;
-    QStringList musicList = QFileDialog::getOpenFileNames(this,"请选择音乐文件","","*.mp3");
+    m_musicList = QFileDialog::getOpenFileNames(this,"请选择音乐文件","","*.mp3");
     //QStringList musicList = fileSystem.getFileList("E:\\Work\\qt_coding\\IMusicPlayer\\resource\\music\\");
     //m_filePath=fileSystem.getFilePath();
-    if(musicList.size()==0)
+    if(m_musicList.size()==0)
         return;
-    qDebug()<<musicList.front();
+    qDebug()<<m_musicList.front();
 
-    QStringList list = musicList.front().split("/");
+    QStringList list = m_musicList.front().split("/");
     for(int i=0;i<list.size()-1;i++)
     {
         m_filePath+=list.at(i)+"/";
     }
 
     qDebug()<<m_filePath;
-    for(int i=0;i<musicList.size();i++){
-        QListWidgetItem *listwidgetItem = new QListWidgetItem;
-        QString fileName=musicList.at(i).section("/",-1);
-        if(cnt==0){
-            listwidgetItem->setText(fileName);
-            ui->listWidget->insertItem(i+1,listwidgetItem);
-        }else{
-            QStringList historyNames=getAllListWidgetText();
-            if(!historyNames.contains(fileName)){
-                listwidgetItem->setText(fileName);
-                ui->listWidget->insertItem(historyNames.size()+1,listwidgetItem);
-            }
-        }
-    }
-    ui->listWidget->setCurrentRow(0);
-    cnt++;
+    ui->tabWidget->setCurrentIndex(0);
+    showList();
 }
 
-void IMusicPlayer::on_btn_prev_clicked()
+void IMusicPlayer::slot_btn_prev_clicked()
 {
     m_prevOrnext = true;
-    stopMusic();
+    m_player.stop();
     int nextRow;
-    int count = ui->listWidget->count();
-    int currentRow = ui->listWidget->currentRow();
+    int count = listwidget->count();
+    int currentRow = listwidget->currentRow();
     if(currentRow == 0){
         nextRow = count-1;
     }else
     {
         nextRow = currentRow-1;
     }
-    QString temp=m_filePath+ui->listWidget->item(nextRow)->text();
+    QString temp=m_filePath+listwidget->item(nextRow)->text();
     qDebug()<<temp;
-    ui->listWidget->setCurrentRow(nextRow);
+    listwidget->setCurrentRow(nextRow);
     playMusic(nextRow);
 }
 
-void IMusicPlayer::on_btn_next_clicked()
+void IMusicPlayer::slot_btn_next_clicked()
 {
     m_prevOrnext = true;
-    stopMusic();
+    m_player.stop();
     int nextRow;
-    int count = ui->listWidget->count();
-    int currentRow = ui->listWidget->currentRow();
+    int count = listwidget->count();
+    int currentRow = listwidget->currentRow();
     if(currentRow == count-1){
         nextRow = 0;
     }else
     {
         nextRow = currentRow+1;
     }
-    QString temp=m_filePath+ui->listWidget->item(nextRow)->text();
+    QString temp=m_filePath+listwidget->item(nextRow)->text();
     qDebug()<<temp;
-    ui->listWidget->setCurrentRow(nextRow);
+    listwidget->setCurrentRow(nextRow);
     playMusic(nextRow);
 }
 
-void IMusicPlayer::on_listWidget_doubleClicked(const QModelIndex &index)
+void IMusicPlayer::slot_currentRow_change(int row)
+{
+    listwidget->setCurrentRow(row);
+}
+
+void IMusicPlayer::slot_listWidget_doubleClicked(QListWidgetItem *item)
 {
     m_prevOrnext=true;
-    playMusic(index.row());
+    qDebug()<<item->text();
+    playMusic(item->text());
 }
 
-void IMusicPlayer::on_position_change_sliderMoved(int position)
-{
-    m_bIsmove=true;
-}
 
-void IMusicPlayer::on_volume_change_sliderMoved(int position)
-{
-    m_player.setVolume(position);
-}
-
-void IMusicPlayer::on_tabWidget_currentChanged(int index)
+void IMusicPlayer::slot_tabWidget_currentChanged(int index)
 {
     if(ui->tabWidget->currentIndex()==0) //音乐馆
     {
-        if(hlayout->widget()==NULL)
-        {
-            hlayout->addWidget(ui->listWidget);
+        listwidget->clear();
+        showList();
 
-        }
-        ui->tab_now->setLayout(hlayout);
-        ui->listWidget->clear();
-        on_btn_load_clicked();
+        if(!hlayout2->isEmpty())
+            hlayout2->removeWidget(listwidget);
+        if(hlayout1->isEmpty())
+            hlayout1->addWidget(listwidget);
 
     }else if(ui->tabWidget->currentIndex()==1) //播放历史
     {
         showHistoryList();
-        if(hlayout->widget()==NULL)
-        {
-          hlayout->addWidget(ui->listWidget);
-        }
-        ui->tab_history->setLayout(hlayout);
+
+        if(!hlayout1->isEmpty())
+            hlayout1->removeWidget(listwidget);
+        if(hlayout2->isEmpty())
+            hlayout2->addWidget(listwidget);
+
     }
     ui->tabWidget->setCurrentIndex(index);
 }

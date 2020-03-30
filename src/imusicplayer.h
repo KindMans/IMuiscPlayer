@@ -3,9 +3,9 @@
 
 #include <QWidget>
 #include <QString>
-#include <QList>
 #include <QMediaPlayer>
 #include <QMediaPlaylist>
+#include <QListWidget>
 #include <QHBoxLayout>
 
 QT_BEGIN_NAMESPACE
@@ -23,51 +23,47 @@ public:
     void getMusicList();    //调试接口
     void setPlayMusicUrl(const QString &url);
     void playMusic(int row);
+    void playMusic(const QString &text);
     void stopMusic();
     void recordHistoryMusic(const QString &path);
     void readHistoryMusic(const QString &path,QString &data);
     void showHistoryList();
+    void showList();
     void getHistotyConfig();
+    QStringList getAllListWidgetText();
 
 private:
     int numRandom();
 
-    QStringList getAllListWidgetText();
 private slots:
-    void on_fast_forward(qint64 position);
-    void on_duration(qint64 duration);
-    void on_speed_progress(int value);
-    void on_currentRow_change(int row);
-    void on_btn_player_clicked();
+    void slot_modifyProgress(qint64 position);
+    void slot_duration(qint64 duration);
+    void slot_setPosition(int value);
+    void slot_playModelSelect();
 
-    void on_btn_pause_clicked();
+    void slot_btn_player_clicked();
+    void slot_btn_pause_clicked();
+    void slot_btn_load_clicked();
+    void slot_btn_prev_clicked();
+    void slot_btn_next_clicked();
+    void slot_position_change_sliderMoved(int position);
+    void slot_volume_change_sliderMoved(int position);
 
-    void on_seqPlayMusic();
-
-    void on_btn_load_clicked();
-
-    void on_btn_prev_clicked();
-
-    void on_btn_next_clicked();
-
-    void on_listWidget_doubleClicked(const QModelIndex &index);
-
-    void on_position_change_sliderMoved(int position);
-
-    void on_volume_change_sliderMoved(int position);
-
-    void on_tabWidget_currentChanged(int index);
+    void slot_currentRow_change(int row);
+    void slot_listWidget_doubleClicked(QListWidgetItem *item);
+    void slot_tabWidget_currentChanged(int index);
 
 private:
+    QStringList m_musicList;
     QString m_filePath;
-    QList<QString> m_musicList;
     QMediaPlayer m_player;
     QMediaPlaylist m_playerList;
     bool m_prevOrnext;
     bool m_bIsmove;
     QString m_hisPath;
-
-    QHBoxLayout *hlayout;
+    QHBoxLayout *hlayout1;
+    QHBoxLayout *hlayout2;
+    QListWidget *listwidget;
 
 private:
     Ui::IMusicPlayer *ui;

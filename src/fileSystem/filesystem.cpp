@@ -18,6 +18,21 @@ QString FileSystem::getFilePath()
     return m_path;
 }
 
+bool FileSystem::fileExist(const QString &path)
+{
+    m_file.setFileName(path);
+    if(!m_file.exists())
+        return false;
+
+    return true;
+}
+
+void FileSystem::removeFile()
+{
+    if(m_file.isOpen())
+        m_file.remove();
+}
+
 int FileSystem::Write(const QString &data)
 {
     int wret=-1;
@@ -81,5 +96,6 @@ bool FileSystem::openFile(const QString &path)
     }
     return true;
 }
+
 
 
